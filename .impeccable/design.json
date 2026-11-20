@@ -1,0 +1,216 @@
+{
+  "schemaVersion": 1,
+  "name": "AegisVolt · Línea de carga",
+  "description": "Operations console where every charge is a trip on a transit line: the environment is the line, each SAGA step a station, and a failure opens a red return branch through the compensations.",
+  "source": {
+    "artifact": "frontend/src",
+    "tokensFile": "frontend/src/styles.css",
+    "environmentLinesFile": "frontend/src/config.ts",
+    "directionContract": ".impeccable/surfaces/frontend-src-app-tsx.md",
+    "product": "PRODUCT.md",
+    "evidence": [
+      ".impeccable/review/desktop.png",
+      ".impeccable/review/desktop-empty.png",
+      ".impeccable/review/desktop-flags.png",
+      ".impeccable/review/desktop-happy.png",
+      ".impeccable/review/desktop-midflight.png",
+      ".impeccable/review/desktop-salud.png",
+      ".impeccable/review/desktop-selected.png",
+      ".impeccable/review/desktop-transacciones.png",
+      ".impeccable/review/mobile.png",
+      ".impeccable/review/mobile-transacciones.png"
+    ],
+    "documentedAt": "2026-11-20"
+  },
+  "direction": {
+    "thesis": "A charge is a trip on a transit line. Each SAGA step is a station; a failure opens a red return branch that runs back through the compensations.",
+    "lineage": ["Santiago Metro line diagrams", "TransMilenio line diagrams"],
+    "refuses": ["KPI card grids", "status-pill dashboards", "drop-shadowed cards", "gradients"],
+    "colorScheme": "light",
+    "language": "es",
+    "numberLocale": "es-CO"
+  },
+  "tokens": {
+    "color": {
+      "ink": { "value": "#1b1f3b", "cssVar": "--ink", "role": "navy shell, primary text, train marker, pressed chips, ON pills" },
+      "ink-2": { "value": "#3a4060", "cssVar": "--ink-2", "role": "secondary text" },
+      "ink-3": { "value": "#555c7c", "cssVar": "--ink-3", "role": "muted text, captions, table headers" },
+      "ink-4": { "value": "#8a90a6", "cssVar": "--ink-4", "role": "faintest text, offline dot" },
+      "rule": { "value": "#dadde6", "cssVar": "--rule", "role": "hairlines, unreached track and stop borders" },
+      "rule-2": { "value": "#eef0f4", "cssVar": "--rule-2", "role": "row separators, skeletons, meter trough, OFF pill" },
+      "ground": { "value": "#ffffff", "cssVar": "--ground", "role": "page ground" },
+      "ground-2": { "value": "#f6f7fa", "cssVar": "--ground-2", "role": "rail, launch form, row hover" },
+      "line": { "value": "#0072ce", "cssVar": "--line", "role": "current environment line colour; overwritten at runtime from config.ts LINE", "runtime": true },
+      "ok": { "value": "#00965e", "cssVar": "--ok", "role": "free / healthy marks" },
+      "ok-ink": { "value": "#00754a", "cssVar": "--ok-ink", "role": "ok text on white" },
+      "bad": { "value": "#d52b1e", "cssVar": "--bad", "role": "return branch, failure marks" },
+      "bad-ink": { "value": "#b3241a", "cssVar": "--bad-ink", "role": "failure / warning text" },
+      "bad-wash": { "value": "#fdeeed", "cssVar": "--bad-wash", "role": "failure note, faulted connector fill" },
+      "run": { "value": "#f2b705", "cssVar": "--run", "role": "in-progress marks, current station pulse" },
+      "run-ink": { "value": "#7d5c00", "cssVar": "--run-ink", "role": "in-progress text, surge note" },
+      "run-wash": { "value": "#fff6dc", "cssVar": "--run-wash", "role": "recovery and admin-token panels" }
+    },
+    "colorLiterals": {
+      "#c4c8dc": "secondary text and inactive tabs on the navy shell",
+      "#c5cad8": "input / quiet button / filter chip border, switch off track",
+      "#f2c2be": "faulted connector border",
+      "#3ddc97": "connected live dot on navy",
+      "#ffffff": "on-colour text, stop-dot fill, roundel halo"
+    },
+    "colorDerivations": [
+      { "expr": "color-mix(in srgb, var(--line) 6%, white)", "use": "current env column in flag matrix" },
+      { "expr": "color-mix(in srgb, var(--line) 8%, white)", "use": "active history row" },
+      { "expr": "color-mix(in srgb, var(--line) 9%, white)", "use": "charging connector fill" },
+      { "expr": "color-mix(in srgb, var(--line) 40%, white)", "use": "charging connector border" },
+      { "expr": "color-mix(in srgb, var(--line) 22%, white)", "use": "text selection, empty-state track" },
+      { "expr": "color-mix(in srgb, var(--line) 82%, black)", "use": "primary button hover" },
+      { "expr": "color-mix(in srgb, var(--run) 60%, transparent)", "use": "current station pulse ring" }
+    ],
+    "environmentLines": {
+      "dev": { "color": "#0072CE", "letter": "D", "label": "Desarrollo" },
+      "test": { "color": "#7A4FBF", "letter": "T", "label": "Pruebas" },
+      "prod": { "color": "#00838F", "letter": "P", "label": "Producción" },
+      "fallback": { "color": "#596080", "letter": "first letter of env", "label": "env name" }
+    },
+    "typography": {
+      "family": { "value": "\"Archivo Variable\", \"Archivo\", system-ui, sans-serif", "cssVar": "--font", "package": "@fontsource-variable/archivo/wdth.css" },
+      "narrow": { "value": "87.5%", "cssVar": "--narrow", "property": "font-stretch", "use": "headings, nameplates, figures, totals" },
+      "numeric": "tabular-nums",
+      "scale": {
+        "body": { "size": "15px", "weight": 400, "lineHeight": 1.45 },
+        "h1": { "size": "30px", "weight": 750, "lineHeight": 1.15, "letterSpacing": "-0.015em", "narrow": true, "mobileSize": "24px" },
+        "h2": { "size": "19px", "weight": 700, "lineHeight": 1.15, "narrow": true },
+        "h3": { "size": "15px", "weight": 700, "lineHeight": 1.15, "narrow": true },
+        "brand": { "size": "20px", "weight": 750, "letterSpacing": "-0.01em", "narrow": true },
+        "stop-name-main": { "size": "22px", "weight": 750, "letterSpacing": "-0.01em", "narrow": true, "containerSizes": { "760px": "17px", "520px": "15px" } },
+        "stop-name-return": { "size": "17px", "weight": 700, "narrow": true },
+        "session-figure": { "size": "26px", "weight": 700, "narrow": true },
+        "quote-total": { "size": "24px", "weight": 750, "narrow": true },
+        "wallet-balance": { "size": "20px", "weight": 750, "narrow": true },
+        "env-head": { "size": "18px", "weight": 750, "narrow": true },
+        "station-name": { "size": "16px", "weight": 700, "narrow": true },
+        "status": { "size": "14px", "weight": 650 },
+        "label": { "size": "13px", "weight": 600 },
+        "serial": { "size": "13px", "weight": 600, "letterSpacing": "0.04em" },
+        "caption": { "size": "12px", "weight": 600, "letterSpacing": "0.02em" },
+        "pill": { "size": "12px", "weight": 750, "letterSpacing": "0.04em" }
+      }
+    },
+    "spacing": {
+      "s1": { "value": "4px", "cssVar": "--s1" },
+      "s2": { "value": "8px", "cssVar": "--s2" },
+      "s3": { "value": "12px", "cssVar": "--s3" },
+      "s4": { "value": "16px", "cssVar": "--s4" },
+      "s5": { "value": "24px", "cssVar": "--s5" },
+      "s6": { "value": "32px", "cssVar": "--s6" },
+      "s7": { "value": "48px", "cssVar": "--s7" }
+    },
+    "radius": {
+      "xs": { "value": "4px", "use": "skeleton blocks" },
+      "sm": { "value": "8px", "use": "inputs, buttons" },
+      "md": { "value": "10px", "use": "failure note, recovery, token form" },
+      "lg": { "value": "12px", "use": "train marker" },
+      "xl": { "value": "14px", "use": "launch form panel" },
+      "switch": { "value": "13px", "use": "switch track" },
+      "chip": { "value": "17px", "use": "filter chips" },
+      "connector": { "value": "18px", "use": "connector chips" },
+      "pill": { "value": "999px", "use": "ON/OFF pill state" },
+      "dot": { "value": "50%", "use": "stations, status dots, roundels" }
+    },
+    "shadow": {
+      "header-line": "inset 0 -4px 0 var(--line)",
+      "roundel-halo": "0 0 0 2px #fff",
+      "selected-ring": "0 0 0 2px var(--line)",
+      "train": "0 6px 14px -4px rgb(27 31 59 / 0.5)",
+      "switch-knob": "0 1px 3px rgb(27 31 59 / 0.3)"
+    },
+    "stroke": {
+      "track": "12px round cap (LineDiagram run, base, return)",
+      "track-ghost": "3px, dasharray 1 9",
+      "mini-track": "3px (MiniLine)",
+      "service-line": "10px bar (Salud)",
+      "timeline-spine": "4px",
+      "focus": "3px solid var(--line), offset 2px"
+    },
+    "motion": {
+      "ease-out": { "value": "cubic-bezier(0.16, 1, 0.3, 1)", "cssVar": "--ease-out" },
+      "durations": {
+        "press": "120ms",
+        "hover": "160ms",
+        "switch-track": "200ms",
+        "switch-knob": "220ms",
+        "state-dot": "300ms",
+        "train-top": "450ms",
+        "track-run": "700ms",
+        "train-left": "750ms",
+        "return-draw": "900ms",
+        "meter": "1.8s linear"
+      },
+      "loops": {
+        "blink-live": "2.4s",
+        "blink-charging": "1.6s",
+        "blink-status": "1s",
+        "pulse-current-stop": "1.4s"
+      },
+      "reducedMotion": "all animations and transitions collapse to 0.01ms"
+    },
+    "layout": {
+      "headerHeight": "64px",
+      "railWidth": "340px",
+      "workPadding": "24px 32px 48px",
+      "workSplit": "minmax(0,1.25fr) minmax(0,1fr)",
+      "lineDiagramHeight": { "default": "340px", "settled": "200px", "detail": "310px", "detailSettled": "170px", "mobile": "300px" },
+      "breakpoints": { "detailStacks": "1180px", "railStacks": "960px", "mobile": "720px" },
+      "containerQueries": { "lineDiagram": ["760px", "520px"] }
+    }
+  },
+  "semantics": {
+    "states": {
+      "connector": { "AVAILABLE": "ok", "RESERVED": "run", "CHARGING": "line (blinking)", "FAULTED": "bad", "OFFLINE": "ink-4" },
+      "stop": { "pending": "white + rule border", "current": "run border + pulse", "done": "line fill + check", "failed": "bad fill + X" },
+      "returnStop": { "pending": "white + bad border", "done": "bad fill + check", "failed": "ink fill + bad border + X" },
+      "sagaTone": {
+        "STARTED": "run", "CONNECTOR_RESERVED": "run", "PAYMENT_CAPTURED": "run",
+        "COMPLETED": "ok", "COMPENSATING": "warn (bad-ink, blinking)",
+        "COMPENSATED": "bad", "FAILED": "bad", "COMPENSATION_FAILED": "bad"
+      }
+    },
+    "rules": [
+      "Red is only for the return branch and failures.",
+      "Amber means in motion, never warning; warnings use bad-ink.",
+      "Green means free / healthy; a completed station uses the line colour.",
+      "Environment identity always flows from --line."
+    ]
+  },
+  "components": [
+    { "name": "LineDiagram", "file": "frontend/src/components/LineDiagram.tsx", "signature": true, "summary": "SAGA as a metro line: stations Reserva/Cobro/Activación/Carga at x 7/35/63/91%, run track in --line, dotted ghost return branch, red return branch drawn via pathLength/dashoffset with return stops under the station they undo, travelling train marker (lucide TrainFront). role=img with Spanish aria-label." },
+    { "name": "MiniLine", "file": "frontend/src/components/MiniLine.tsx", "summary": "84x26 SVG miniature of the same line grammar for history rows." },
+    { "name": "Roundel", "file": "frontend/src/components/Header.tsx", "summary": "Line-colour circle with env letter, white halo; 36px header, 26px flag matrix." },
+    { "name": "ShellHeader", "file": "frontend/src/components/Header.tsx", "summary": "64px sticky navy band, 4px line-colour underline, text tabs with white current bar, En vivo status." },
+    { "name": "StationsRail", "file": "frontend/src/components/StationsRail.tsx", "summary": "ground-2 sticky rail, legend, stations with capsule connector chips; faulted stations first." },
+    { "name": "ChargeForm", "file": "frontend/src/components/OperationView.tsx", "summary": "ground-2 14px panel, 4-col fields, boost checkbox, live quote, primary Reservar y activar (lucide Zap)." },
+    { "name": "SessionStrip", "file": "frontend/src/components/OperationView.tsx", "summary": "Power / energy / battery / session figures at 26px narrow, 6px line-colour meter, quiet stop button." },
+    { "name": "FailureNote", "file": "frontend/src/components/OperationView.tsx", "summary": "bad-wash note with TriangleAlert, failed step and code in bold." },
+    { "name": "TripTable", "file": "frontend/src/components/OperationView.tsx", "summary": "Hairline table with MiniLine first column, serial ids, status labels; two-line grid on mobile." },
+    { "name": "SagaStatusLabel", "file": "frontend/src/components/SagaStatus.tsx", "summary": "Dot + coloured text, tones ok/run/warn/bad." },
+    { "name": "TransactionsView", "file": "frontend/src/components/TransactionsView.tsx", "summary": "Filter chips, trip table, sticky detail with facts, LineDiagram replay, recovery banner, vertical timeline (red spine for compensations), wallet movements." },
+    { "name": "FlagsView", "file": "frontend/src/components/FlagsView.tsx", "summary": "Flag x environment matrix with roundel heads, switch for connected env, solid or ghost ON/OFF pills elsewhere, policy divergence in red ink, amber admin-token form." },
+    { "name": "HealthView", "file": "frontend/src/components/HealthView.tsx", "summary": "Services as stations on a 10px line bar (vertical on mobile), wallets with large balances, environment facts." }
+  ],
+  "icons": { "library": "lucide-react", "used": ["TrainFront", "Check", "X", "Zap", "Square", "TriangleAlert", "RotateCcw", "KeyRound", "Plus"] },
+  "dos": [
+    "Drive every identity surface from --line, set once from config.ts LINE.",
+    "Draw any SAGA with the line grammar (large, mini, or vertical timeline).",
+    "Use Archivo semi-condensed and heavy weights for nameplates and figures; keep tabular numerals.",
+    "Separate with hairlines and ground-2 panels on a white ground.",
+    "Spanish copy; full aria-label on diagrams."
+  ],
+  "donts": [
+    "No KPI card grids, drop-shadowed cards, gradients or glassmorphism.",
+    "No green for completed stations; no red as accent.",
+    "No second typeface or monospace.",
+    "No hard-coded environment colours in components.",
+    "No filled coloured status pills in tables.",
+    "Never hide a compensation that ran."
+  ]
+}
