@@ -44,9 +44,14 @@ app = create_app(
     include_ready=False,  # el gateway define su propio /ready (tabla de sagas + microservicios)
 )
 
+# Orígenes del frontend permitidos. El navegador no aplica CORS al handshake WebSocket, por eso la misma
+# lista se pasa a Strawberry (`allowed_origins`) como defensa contra cross-site WebSocket hijacking.
+# La API no usa cookies (el token admin va en un header), así que "*" es aceptable solo en local.
+CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "*").split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in os.getenv("CORS_ORIGINS", "*").split(",")],
+    allow_origins=CORS_ORIGINS,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["X-Correlation-ID"],
@@ -56,6 +61,7 @@ graphql_router = GraphQLRouter(
     schema,
     subscription_protocols=[GRAPHQL_TRANSPORT_WS_PROTOCOL, GRAPHQL_WS_PROTOCOL],
     graphql_ide="graphiql",
+    allowed_origins=CORS_ORIGINS,
 )
 app.include_router(graphql_router, prefix="/graphql")
 

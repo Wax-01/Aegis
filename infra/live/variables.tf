@@ -98,3 +98,9 @@ variable "cluster_aws_endpoint_url" {
   type        = string
   default     = null
 }
+
+variable "extra_cors_origins" {
+  description = "Orígenes adicionales del frontend (p. ej. el dominio público en AWS real) para CORS y WebSocket"
+  type        = list(string)
+  default     = []
+}
