@@ -1,0 +1,29 @@
+# Floci "de plataforma": emulador AWS persistente conectado a la red docker de kind.
+#   * Terraform (en el host) lo usa en http://localhost:4566
+#   * Los pods lo resuelven como http://floci:4566 (DNS de docker en la red `kind`)
+#   * API Gateway (dentro de Floci) alcanza el NodePort del clúster en aegisvolt-control-plane:3008x
+# Requiere que el clúster kind exista antes (crea la red `kind`).
+name: aegisvolt-platform
+
+services:
+  floci:
+    image: floci/floci:latest
+    container_name: floci
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4566:4566"
+    environment:
+      FLOCI_DEFAULT_REGION: us-east-1
+      FLOCI_STORAGE_MODE: persistent # el estado (S3 con versiones, DynamoDB, logs) sobrevive reinicios
+      FLOCI_STORAGE_PERSISTENT_PATH: /app/data
+    volumes:
+      - floci-data:/app/data
+    networks: [kind]
+
+volumes:
+  floci-data:
+    name: aegisvolt-floci-data
+
+networks:
+  kind:
+    external: true

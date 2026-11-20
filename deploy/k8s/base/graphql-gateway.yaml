@@ -1,0 +1,105 @@
+# NodePort (puerto por ambiente en los overlays). Es el target del NLB/VPC Link en AWS real y de la
+# integración de API Gateway en el emulador.
+apiVersion: v1
+kind: Service
+metadata:
+  name: graphql-gateway
+  labels: { app: graphql-gateway }
+spec:
+  type: NodePort
+  selector: { app: graphql-gateway }
+  ports:
+    - { name: http, port: 8000, targetPort: http, nodePort: 30080 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: graphql-gateway
+  labels: { app: graphql-gateway, track: stable }
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels: { app: graphql-gateway, track: stable }
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  template:
+    metadata:
+      labels: { app: graphql-gateway, track: stable }
+    spec:
+      containers:
+        - name: app
+          image: aegisvolt/graphql-gateway:CURRENT
+          imagePullPolicy: IfNotPresent
+          ports: [{ name: http, containerPort: 8000 }]
+          envFrom:
+            - configMapRef: { name: aegisvolt-infra }
+            - secretRef: { name: aegisvolt-app }
+          env:
+            - { name: DEPLOY_TRACK, value: stable }
+            - { name: RESERVATION_SERVICE_URL, value: "http://station-reservation-service:8000" }
+            - { name: BILLING_SERVICE_URL, value: "http://billing-wallet-service:8000" }
+            - { name: DISPATCH_SERVICE_URL, value: "http://energy-dispatch-service:8000" }
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 320Mi }
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: graphql-gateway-canary
+  labels: { app: graphql-gateway, track: canary }
+spec:
+  replicas: 0
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels: { app: graphql-gateway, track: canary }
+  template:
+    metadata:
+      labels: { app: graphql-gateway, track: canary }
+    spec:
+      containers:
+        - name: app
+          image: aegisvolt/graphql-gateway:CURRENT
+          imagePullPolicy: IfNotPresent
+          ports: [{ name: http, containerPort: 8000 }]
+          envFrom:
+            - configMapRef: { name: aegisvolt-infra }
+            - secretRef: { name: aegisvolt-app }
+          env:
+            - { name: DEPLOY_TRACK, value: canary }
+            - { name: RESERVATION_SERVICE_URL, value: "http://station-reservation-service:8000" }
+            - { name: BILLING_SERVICE_URL, value: "http://billing-wallet-service:8000" }
+            - { name: DISPATCH_SERVICE_URL, value: "http://energy-dispatch-service:8000" }
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 320Mi }
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true

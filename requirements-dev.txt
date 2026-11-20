@@ -1,0 +1,8 @@
+# Herramientas de desarrollo/CI (las dependencias de runtime están en services/*/requirements.txt)
+-e services/common
+strawberry-graphql[fastapi]>=0.243,<1
+pytest>=8
+moto[dynamodb,logs]>=5
+ruff>=0.6
+pyyaml>=6
+prefect>=3.4,<4

@@ -1,0 +1,103 @@
+# Stack completo en modo standalone (desarrollo rápido y jobs de CI integration/e2e).
+# Para la demo de ambientes dev/test/prod usa Terraform + kind (ver README).
+#
+#   docker compose up -d --build          # levanta Floci + bootstrap + 4 servicios
+#   AEGIS_ENV=test docker compose up -d    # mismo stack "como" test
+name: aegisvolt
+
+x-aws-env: &aws-env
+  AEGIS_ENV: ${AEGIS_ENV:-dev}
+  AWS_ENDPOINT_URL: http://floci:4566
+  AWS_REGION: us-east-1
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+
+x-service: &service
+  restart: unless-stopped
+  depends_on:
+    bootstrap:
+      condition: service_completed_successfully
+
+services:
+  floci:
+    image: floci/floci:latest
+    ports:
+      - "127.0.0.1:4566:4566"
+    environment:
+      FLOCI_DEFAULT_REGION: us-east-1
+      FLOCI_STORAGE_MODE: ${FLOCI_STORAGE_MODE:-memory}
+      FLOCI_STORAGE_PERSISTENT_PATH: /app/data
+    volumes:
+      - floci-compose-data:/app/data
+
+  # Crea tablas/flags/log groups (equivalente standalone de Terraform). Reutiliza la imagen del gateway,
+  # que ya trae boto3 y aegis_common.
+  bootstrap:
+    image: aegisvolt/graphql-gateway:${IMAGE_TAG:-local}
+    build:
+      context: ./services
+      dockerfile: graphql-gateway/Dockerfile
+      args: { APP_VERSION: "${IMAGE_TAG:-local}" }
+    depends_on: [floci]
+    environment: *aws-env
+    volumes:
+      - ./scripts:/scripts:ro
+    command: ["python", "/scripts/bootstrap_standalone.py", "--env", "${AEGIS_ENV:-dev}"]
+    restart: "no"
+
+  station-reservation-service:
+    <<: *service
+    image: aegisvolt/station-reservation:${IMAGE_TAG:-local}
+    build:
+      context: ./services
+      dockerfile: station-reservation/Dockerfile
+      args: { APP_VERSION: "${IMAGE_TAG:-local}" }
+    environment: *aws-env
+    ports: ["127.0.0.1:8001:8000"]
+
+  billing-wallet-service:
+    <<: *service
+    image: aegisvolt/billing-wallet:${IMAGE_TAG:-local}
+    build:
+      context: ./services
+      dockerfile: billing-wallet/Dockerfile
+      args: { APP_VERSION: "${IMAGE_TAG:-local}" }
+    environment: *aws-env
+    ports: ["127.0.0.1:8002:8000"]
+
+  energy-dispatch-service:
+    <<: *service
+    image: aegisvolt/energy-dispatch:${IMAGE_TAG:-local}
+    build:
+      context: ./services
+      dockerfile: energy-dispatch/Dockerfile
+      args: { APP_VERSION: "${IMAGE_TAG:-local}" }
+    environment:
+      <<: *aws-env
+      TELEMETRY_TIME_ACCELERATION: "20"
+    ports: ["127.0.0.1:8003:8000"]
+
+  graphql-gateway:
+    <<: *service
+    image: aegisvolt/graphql-gateway:${IMAGE_TAG:-local}
+    build:
+      context: ./services
+      dockerfile: graphql-gateway/Dockerfile
+      args: { APP_VERSION: "${IMAGE_TAG:-local}" }
+    environment:
+      <<: *aws-env
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-local-admin-token}
+      SAGA_STEP_DELAY_MS: ${SAGA_STEP_DELAY_MS:-0}
+    ports: ["127.0.0.1:8080:8000"]
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+      station-reservation-service:
+        condition: service_started
+      billing-wallet-service:
+        condition: service_started
+      energy-dispatch-service:
+        condition: service_started
+
+volumes:
+  floci-compose-data:

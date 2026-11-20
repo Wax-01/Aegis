@@ -1,0 +1,18 @@
+# Base común a los 3 ambientes. El namespace, NodePorts, réplicas y la config del frontend se definen en
+# overlays/<env>. El namespace, ConfigMap `aegisvolt-infra` y Secret `aegisvolt-app` los crea Terraform
+# (infra/modules/k8s_env) — los manifiestos solo los consumen.
+#
+# Las imágenes `:CURRENT` son marcadores: scripts/deploy/canary.py los reemplaza al renderizar para no
+# revertir nunca la versión estable en ejecución.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: aegisvolt
+    includeSelectors: false
+resources:
+  - station-reservation.yaml
+  - billing-wallet.yaml
+  - energy-dispatch.yaml
+  - graphql-gateway.yaml
+  - frontend.yaml

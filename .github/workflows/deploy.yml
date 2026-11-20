@@ -1,0 +1,110 @@
+# -----------------------------------------------------------------------------
+# POST-MERGE: un push a dev | test | prod SOLO puede venir de un PR fusionado (ruleset: push directo y
+# force-push bloqueados). El ambiente se deriva DINÁMICAMENTE de la rama destino del merge:
+#     github.ref_name  ->  terraform workspace select <env>  ->  terraform apply  ->  canary en aegisvolt-<env>
+# -----------------------------------------------------------------------------
+name: deploy
+
+on:
+  push:
+    branches: [dev, test, prod]
+
+# Un solo despliegue por ambiente a la vez (sin cancelar el que está en curso).
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  resolve-environment:
+    name: resolve-environment
+    runs-on: ubuntu-latest
+    outputs:
+      env: ${{ steps.env.outputs.env }}
+    steps:
+      - id: env
+        name: Detectar ambiente desde la rama destino
+        run: |
+          case "${GITHUB_REF_NAME}" in
+            dev|test|prod) echo "env=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::La rama ${GITHUB_REF_NAME} no corresponde a un ambiente"; exit 1 ;;
+          esac
+          echo "Merge en **${GITHUB_REF_NAME}** → ambiente **${GITHUB_REF_NAME}**" >> "$GITHUB_STEP_SUMMARY"
+
+  terraform-apply:
+    name: terraform-apply
+    needs: resolve-environment
+    runs-on: [self-hosted, aegisvolt]
+    environment: ${{ needs.resolve-environment.outputs.env }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: infra/live
+    env:
+      TARGET_ENV: ${{ needs.resolve-environment.outputs.env }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: terraform init (backend S3 versionado)
+        run: terraform init -input=false -reconfigure -backend-config=backend/floci.s3.tfbackend
+
+      - name: terraform workspace select ${{ env.TARGET_ENV }}
+        run: |
+          terraform workspace select "$TARGET_ENV"
+          test "$(terraform workspace show)" = "$TARGET_ENV"
+
+      - name: terraform apply (solo este ambiente)
+        run: terraform apply -auto-approve -input=false -no-color -lock-timeout=300s -var-file=floci.tfvars
+
+      - name: Historial de versiones del tfstate en S3
+        working-directory: .
+        run: |
+          echo '### Versiones de `env:/'"$TARGET_ENV"'/aegisvolt/terraform.tfstate`' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          python scripts/tfstate_versions.py list --workspace "$TARGET_ENV" | head -12 >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  canary-deploy:
+    name: canary-deploy
+    needs: [resolve-environment, terraform-apply]
+    runs-on: [self-hosted, aegisvolt]
+    defaults:
+      run:
+        shell: bash
+    env:
+      TARGET_ENV: ${{ needs.resolve-environment.outputs.env }}
+      AWS_ENDPOINT_URL: http://localhost:4566
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependencias del script de despliegue
+        run: python -m pip install -q -r requirements-dev.txt
+
+      - name: Build + kind load + Canary 20 % -> análisis CloudWatch -> promote / rollback
+        run: python scripts/deploy/canary.py deploy --env "$TARGET_ENV" --canary-weight 20 --analysis-seconds 45
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: canary-reports-${{ env.TARGET_ENV }}
+          path: .canary-reports/
+          if-no-files-found: ignore
+
+  smoke-tests:
+    name: smoke-tests
+    needs: [resolve-environment, canary-deploy]
+    runs-on: [self-hosted, aegisvolt]
+    defaults:
+      run:
+        shell: bash
+    env:
+      TARGET_ENV: ${{ needs.resolve-environment.outputs.env }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pruebas de humo (solo lectura) contra el ambiente desplegado
+        run: |
+          case "$TARGET_ENV" in dev) PORT=30080;; test) PORT=30081;; prod) PORT=30082;; esac
+          GRAPHQL_URL="http://localhost:$PORT/graphql" AEGIS_ENV="$TARGET_ENV" \
+            python -m pytest tests/integration -q -p no:cacheprovider

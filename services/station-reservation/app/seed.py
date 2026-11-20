@@ -1,0 +1,71 @@
+"""Datos de demostración: electrolineras B2B en Latinoamérica."""
+
+from __future__ import annotations
+
+STATIONS: list[dict] = [
+    {
+        "station_id": "BOG-NORTE",
+        "name": "Electrolinera Calle 100",
+        "city": "Bogotá",
+        "country": "CO",
+        "address": "Av. Calle 100 #19-61",
+        "latitude": 4.6867,
+        "longitude": -74.0480,
+        "connectors": [
+            ("C1", "CCS2", 150),
+            ("C2", "CCS2", 150),
+            ("C3", "CCS2", 350),
+            ("C4", "TYPE2", 22),
+        ],
+    },
+    {
+        "station_id": "BOG-SUR",
+        "name": "Hub Logístico Montevideo",
+        "city": "Bogotá",
+        "country": "CO",
+        "address": "Cra. 68 #13-50",
+        "latitude": 4.6340,
+        "longitude": -74.1180,
+        "connectors": [("C1", "CCS2", 60), ("C2", "CHADEMO", 50), ("C3", "CCS2", 350)],
+    },
+    {
+        "station_id": "MDE-SUR",
+        "name": "Terminal Sur Medellín",
+        "city": "Medellín",
+        "country": "CO",
+        "address": "Cra. 65 #8B-91",
+        "latitude": 6.2186,
+        "longitude": -75.5843,
+        "connectors": [("C1", "CCS2", 120), ("C2", "CCS2", 120), ("C3", "TYPE2", 22)],
+    },
+    {
+        "station_id": "CDMX-VALLEJO",
+        "name": "Centro de Distribución Vallejo",
+        "city": "Ciudad de México",
+        "country": "MX",
+        "address": "Calz. Vallejo 1268",
+        "latitude": 19.4890,
+        "longitude": -99.1520,
+        "connectors": [("C1", "CCS2", 180), ("C2", "CCS2", 350), ("C3", "CHADEMO", 50), ("C4", "CCS2", 180)],
+    },
+    {
+        "station_id": "SCL-PUDAHUEL",
+        "name": "Electrolinera Pudahuel",
+        "city": "Santiago",
+        "country": "CL",
+        "address": "Av. Américo Vespucio 1501",
+        "latitude": -33.4130,
+        "longitude": -70.7480,
+        "connectors": [("C1", "CCS2", 150), ("C2", "CCS2", 150), ("C3", "TYPE2", 22, "FAULTED")],
+    },
+    {
+        "station_id": "LIM-CALLAO",
+        "name": "Callao Last-Mile Hub",
+        "city": "Lima",
+        "country": "PE",
+        "address": "Av. Elmer Faucett 3400",
+        "latitude": -12.0300,
+        "longitude": -77.1080,
+        "connectors": [("C1", "CCS2", 100), ("C2", "CCS2", 100)],
+    },
+]

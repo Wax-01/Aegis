@@ -1,0 +1,238 @@
+# -----------------------------------------------------------------------------
+# PRE-MERGE: se ejecuta en cada Pull Request hacia dev | test | prod.
+# Los 6 jobs son "required status checks" en el ruleset de las ramas (.github/rulesets): si alguno no está
+# en verde, GitHub deshabilita el botón Merge.
+# -----------------------------------------------------------------------------
+name: pr-checks
+
+on:
+  pull_request:
+    branches: [dev, test, prod]
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+  TERRAFORM_VERSION: "1.17.1"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  promotion-guard:
+    name: promotion-guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validar cadena de promoción feature/* -> dev -> test -> prod
+        env:
+          BASE: ${{ github.base_ref }}
+          HEAD: ${{ github.head_ref }}
+        run: |
+          case "$BASE" in
+            dev)
+              [[ "$HEAD" =~ ^(feature|fix|chore|docs)/.+ ]] \
+                || { echo "::error::A 'dev' solo entran ramas feature/*, fix/*, chore/* o docs/* (origen: $HEAD)"; exit 1; } ;;
+            test)
+              [[ "$HEAD" == "dev" ]] \
+                || { echo "::error::A 'test' solo se promueve desde 'dev' (origen: $HEAD)"; exit 1; } ;;
+            prod)
+              [[ "$HEAD" == "test" ]] \
+                || { echo "::error::A 'prod' solo se promueve desde 'test' (origen: $HEAD)"; exit 1; } ;;
+            *)
+              echo "::error::Rama destino no gestionada: $BASE"; exit 1 ;;
+          esac
+          echo "Promoción válida: $HEAD -> $BASE" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  lint-build:
+    name: lint-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Dependencias
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint Python (ruff)
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Esquema GraphQL (el SDL versionado debe coincidir con el código)
+        working-directory: services/graphql-gateway
+        run: |
+          python -c "from app.schema import schema; open('schema.graphql','w',encoding='utf-8').write(schema.as_str()+'\n')"
+          git diff --exit-code -- schema.graphql \
+            || { echo "::error::schema.graphql desactualizado: regenéralo y haz commit"; exit 1; }
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Terraform fmt + validate
+        run: |
+          terraform fmt -check -recursive infra
+          for dir in infra/bootstrap infra/live; do
+            terraform -chdir=$dir init -backend=false -input=false
+            terraform -chdir=$dir validate
+          done
+
+      - name: Build de imágenes Docker
+        run: |
+          for svc in station-reservation billing-wallet energy-dispatch graphql-gateway; do
+            docker build -q -t aegisvolt/$svc:ci -f services/$svc/Dockerfile services
+          done
+          if [ -f frontend/Dockerfile ]; then docker build -q -t aegisvolt/frontend:ci frontend; fi
+
+      - uses: actions/setup-node@v4
+        if: hashFiles('frontend/package-lock.json') != ''
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Lint + build frontend
+        if: hashFiles('frontend/package-lock.json') != ''
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+
+  # ---------------------------------------------------------------------------
+  unit-tests:
+    name: unit-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - name: Pruebas unitarias (lógica de negocio + compensaciones SAGA)
+        run: |
+          for svc in station-reservation billing-wallet energy-dispatch graphql-gateway; do
+            echo "::group::$svc"
+            (cd services/$svc && python -m pytest tests -q -p no:cacheprovider)
+            echo "::endgroup::"
+          done
+
+  # ---------------------------------------------------------------------------
+  integration-tests:
+    name: integration-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - name: Levantar Floci + microservicios (stack efímero)
+        run: docker compose up -d --build
+      - name: Pruebas de integración (DynamoDB real en Floci + endpoint GraphQL)
+        run: python -m pytest tests/integration -q -p no:cacheprovider
+      - name: Logs ante fallo
+        if: failure()
+        run: docker compose logs --no-color --tail=200
+
+  # ---------------------------------------------------------------------------
+  e2e-tests:
+    name: e2e-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - name: Levantar Floci + microservicios (stack efímero)
+        run: docker compose up -d --build
+      - name: E2E de la SAGA vía GraphQL (feliz, fondos insuficientes, falla física + rollback)
+        run: python -m pytest tests/e2e -q -p no:cacheprovider
+      - uses: actions/setup-node@v4
+        if: hashFiles('frontend/package-lock.json') != ''
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: E2E del frontend (Playwright) contra el mismo stack
+        if: hashFiles('frontend/package-lock.json') != ''
+        working-directory: frontend
+        env:
+          E2E_GRAPHQL_URL: http://127.0.0.1:8080/graphql
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npm run test:e2e
+      - name: Logs ante fallo
+        if: failure()
+        run: docker compose logs --no-color --tail=200
+
+  # ---------------------------------------------------------------------------
+  # terraform plan contra el workspace de la RAMA DESTINO. Corre en el runner self-hosted porque necesita el
+  # estado remoto (bucket S3 versionado en Floci). Solo PRs del mismo repositorio (nunca forks).
+  terraform-plan:
+    name: terraform-plan
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, aegisvolt]
+    defaults:
+      run:
+        shell: bash
+        working-directory: infra/live
+    env:
+      TARGET_ENV: ${{ github.base_ref }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: terraform init (backend S3)
+        run: terraform init -input=false -reconfigure -backend-config=backend/floci.s3.tfbackend
+
+      - name: Seleccionar workspace = rama destino
+        run: |
+          terraform workspace select "$TARGET_ENV"
+          echo "Workspace activo: $(terraform workspace show)"
+
+      - name: terraform plan
+        run: |
+          terraform plan -input=false -no-color -lock-timeout=120s \
+            -var-file=floci.tfvars -out="tfplan-$TARGET_ENV" | tee plan.txt
+          {
+            echo "### terraform plan — workspace \`$TARGET_ENV\`"
+            echo '```'
+            grep -E "^(Plan:|No changes)" plan.txt || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ github.base_ref }}
+          path: |
+            infra/live/tfplan-${{ github.base_ref }}
+            infra/live/plan.txt
+          retention-days: 7
+
+      - name: Comentar el plan en el PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('infra/live/plan.txt', 'utf8');
+            const summary = (plan.match(/^(Plan:.*|No changes.*)$/m) || ['(ver artefacto)'])[0];
+            const body = `#### terraform plan → workspace \`${process.env.TARGET_ENV}\`\n\n**${summary}**\n\n` +
+              `<details><summary>Plan completo</summary>\n\n\`\`\`\n${plan.slice(-60000)}\n\`\`\`\n</details>`;
+            await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });

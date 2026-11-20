@@ -1,0 +1,7 @@
+# AWS real: copia a aws.s3.tfbackend y ajusta el bucket (nombre global único creado por infra/bootstrap)
+bucket               = "aegisvolt-tfstate-<account-id>"
+key                  = "aegisvolt/terraform.tfstate"
+workspace_key_prefix = "env:"
+region               = "us-east-1"
+encrypt              = true
+dynamodb_table       = "aegisvolt-terraform-locks"

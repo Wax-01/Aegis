@@ -1,0 +1,270 @@
+input ChargeRequestInput {
+  fleetId: String!
+  vehicleId: String!
+  stationId: String!
+  connectorId: String!
+  estimatedKwh: Float! = 40
+  fastChargeBoost: Boolean! = false
+}
+
+type ChargingSession {
+  sagaId: ID!
+  status: String!
+  stationId: String
+  connectorId: String
+  powerKw: Float!
+  currentPowerKw: Float!
+  energyKwh: Float!
+  targetKwh: Float!
+  soc: Float!
+  socStart: Float!
+  faultCode: String
+  faultMessage: String
+  startedAt: String
+  endedAt: String
+  telemetry(limit: Int! = 40): [TelemetryPoint!]!
+}
+
+type Connector {
+  id: ID!
+  stationId: String!
+  connectorType: String!
+  powerKw: Float!
+  tier: ConnectorTier!
+  status: ConnectorStatus!
+  sagaId: String
+  fleetId: String
+  holdExpiresAt: String
+  updatedAt: String
+  liveSession: LiveSession
+}
+
+"""Estado operativo de un conector de carga"""
+enum ConnectorStatus {
+  AVAILABLE
+  RESERVED
+  CHARGING
+  FAULTED
+  OFFLINE
+}
+
+"""Nivel de potencia del conector"""
+enum ConnectorTier {
+  STANDARD
+  FAST
+  ULTRA
+}
+
+type EnvironmentInfo {
+  name: String!
+  version: String!
+  track: String!
+  instance: String!
+  region: String!
+  awsBackend: String!
+  tables: [String!]!
+  logGroupPrefix: String!
+}
+
+type FeatureFlag {
+  key: String!
+  enabled: Boolean!
+  description: String!
+  environment: String!
+  updatedAt: String
+  updatedBy: String
+  source: String!
+}
+
+type FlagSnapshot {
+  key: String!
+  enabled: Boolean!
+}
+
+type LiveSession {
+  sagaId: ID!
+  status: String!
+  powerKw: Float!
+  energyKwh: Float!
+  targetKwh: Float!
+  soc: Float!
+}
+
+type Mutation {
+  """
+  Dispara la SAGA Reservar -> Cobrar -> Activar. Con waitForCompletion=false responde de inmediato (estado STARTED) y el progreso se sigue con la subscription sagaLive.
+  """
+  reserveAndActivateCharge(input: ChargeRequestInput!, waitForCompletion: Boolean! = true): SagaTransaction!
+
+  """Detiene la sesión de carga y libera el conector"""
+  stopChargingSession(sagaId: ID!): SagaTransaction!
+
+  """Re-ejecuta compensaciones de una saga huérfana o COMPENSATION_FAILED"""
+  recoverSaga(sagaId: ID!): SagaTransaction!
+  topUpWallet(fleetId: ID!, amount: Float!): Wallet!
+
+  """
+  Cambia una flag del ambiente actual sin redesplegar (requiere X-Admin-Token)
+  """
+  setFeatureFlag(key: String!, enabled: Boolean!): FeatureFlag!
+}
+
+type PriceQuote {
+  tier: String!
+  ratePerKwh: Float!
+  estimatedKwh: Float!
+  surgePricingEnabled: Boolean!
+  peakHour: Boolean!
+  surgeMultiplier: Float!
+  energyCost: Float!
+  boostFee: Float!
+  total: Float!
+  currency: String!
+  localTime: String!
+}
+
+type Query {
+  """Ambiente estático al que está conectado este endpoint"""
+  environment: EnvironmentInfo!
+
+  """Salud de los microservicios detrás del gateway"""
+  serviceHealth: [ServiceHealth!]!
+
+  """Electrolineras con disponibilidad de conectores y sesiones en vivo"""
+  stations(city: String = null): [Station!]!
+  station(id: ID!): Station
+
+  """
+  Feature flags del ambiente actual (cada ambiente tiene su propia tabla)
+  """
+  featureFlags: [FeatureFlag!]!
+
+  """Historial de transacciones SAGA (más recientes primero)"""
+  sagas(limit: Int! = 30): [SagaTransaction!]!
+  saga(id: ID!): SagaTransaction
+  wallets: [Wallet!]!
+  wallet(fleetId: ID!): Wallet!
+
+  """Cotización (aplica ENABLE_DYNAMIC_SURGE_PRICING del ambiente)"""
+  priceQuote(stationId: String!, connectorId: String!, estimatedKwh: Float! = 40, fastChargeBoost: Boolean! = false): PriceQuote!
+  chargingSession(sagaId: ID!): ChargingSession
+}
+
+"""Estado de la transacción distribuida SAGA"""
+enum SagaStatus {
+  STARTED
+  CONNECTOR_RESERVED
+  PAYMENT_CAPTURED
+  COMPLETED
+  COMPENSATING
+  COMPENSATED
+  FAILED
+  COMPENSATION_FAILED
+}
+
+type SagaStep {
+  name: String!
+  service: String!
+  type: String!
+  status: String!
+  detail: String!
+  errorCode: String
+  at: String!
+}
+
+type SagaTransaction {
+  id: ID!
+  correlationId: String!
+  environment: String!
+  status: SagaStatus!
+  fleetId: String!
+  vehicleId: String!
+  stationId: String!
+  stationName: String
+  connectorId: String!
+  connectorPowerKw: Float!
+  estimatedKwh: Float!
+  fastChargeBoost: Boolean!
+  amount: Float
+  currency: String
+  surgeMultiplier: Float
+  failureStep: String
+  failureCode: String
+  failureReason: String
+  chargingStatus: String
+  energyDeliveredKwh: Float
+  flagsSnapshot: [FlagSnapshot!]!
+  steps: [SagaStep!]!
+  createdAt: String!
+  updatedAt: String!
+  isTerminal: Boolean!
+  compensated: Boolean!
+  session: ChargingSession
+}
+
+type ServiceHealth {
+  name: String!
+  status: String!
+  version: String
+  track: String
+  latencyMs: Float
+  error: String
+}
+
+type Station {
+  id: ID!
+  name: String!
+  city: String!
+  country: String!
+  address: String!
+  latitude: Float!
+  longitude: Float!
+  connectors: [Connector!]!
+  availableConnectors: Int!
+  totalConnectors: Int!
+}
+
+type Subscription {
+  """Estado de conectores en tiempo real (emite solo cuando cambia)"""
+  stationsLive(intervalMs: Int! = 2000): [Station!]!
+
+  """Historial de sagas en tiempo real"""
+  sagasLive(limit: Int! = 20, intervalMs: Int! = 1500): [SagaTransaction!]!
+
+  """Progreso de una saga hasta su estado terminal"""
+  sagaLive(sagaId: ID!): SagaTransaction!
+
+  """Feature flags del ambiente (emite al cambiar)"""
+  featureFlagsLive(intervalMs: Int! = 2000): [FeatureFlag!]!
+}
+
+type TelemetryPoint {
+  timestamp: String!
+  powerKw: Float!
+  energyKwh: Float!
+  soc: Float!
+  voltageV: Float!
+  currentA: Float!
+  temperatureC: Float!
+}
+
+type Wallet {
+  fleetId: ID!
+  name: String!
+  balance: Float!
+  currency: String!
+  updatedAt: String
+  transactions(limit: Int! = 20): [WalletTransaction!]!
+}
+
+type WalletTransaction {
+  id: String!
+  type: String!
+  sagaId: String
+  amount: Float!
+  currency: String!
+  balanceAfter: Float
+  reason: String
+  tombstone: Boolean!
+  createdAt: String!
+}

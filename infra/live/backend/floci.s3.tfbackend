@@ -1,0 +1,25 @@
+# terraform init -backend-config=backend/floci.s3.tfbackend
+bucket               = "aegisvolt-tfstate"
+key                  = "aegisvolt/terraform.tfstate"
+workspace_key_prefix = "env:"
+region               = "us-east-1"
+encrypt              = true
+# Lock nativo de S3 (Terraform >= 1.10): crea env:/<ws>/aegisvolt/terraform.tfstate.tflock con escritura
+# condicional; un segundo apply concurrente sobre el MISMO workspace falla con "state locked".
+use_lockfile = true
+
+# Floci (emulador local de AWS)
+endpoints = {
+  s3       = "http://localhost:4566"
+  dynamodb = "http://localhost:4566"
+  sts      = "http://localhost:4566"
+  iam      = "http://localhost:4566"
+}
+access_key                  = "test"
+secret_key                  = "test"
+use_path_style              = true
+skip_credentials_validation = true
+skip_region_validation      = true
+skip_requesting_account_id  = true
+skip_metadata_api_check     = true
+skip_s3_checksum            = true

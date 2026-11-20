@@ -1,0 +1,7 @@
+# AWS real (referencia de la arquitectura objetivo).
+aws_endpoint_url   = null
+api_endpoint_type  = "PRIVATE"
+use_vpc_link       = true
+enable_nat_gateway = true
+create_eks         = true
+manage_kubernetes  = false # el namespace se gestiona tras obtener el kubeconfig del EKS privado

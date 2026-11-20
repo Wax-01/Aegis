@@ -1,0 +1,98 @@
+# Service selecciona SOLO `app` => balancea entre pods stable y canary. La proporción de tráfico del
+# canary = réplicas canary / réplicas totales (1 canary + 4 stable = 20 %).
+apiVersion: v1
+kind: Service
+metadata:
+  name: station-reservation-service
+  labels: { app: station-reservation-service }
+spec:
+  selector: { app: station-reservation-service }
+  ports:
+    - { name: http, port: 8000, targetPort: http }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: station-reservation-service
+  labels: { app: station-reservation-service, track: stable }
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels: { app: station-reservation-service, track: stable }
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  template:
+    metadata:
+      labels: { app: station-reservation-service, track: stable }
+    spec:
+      containers:
+        - name: app
+          image: aegisvolt/station-reservation:CURRENT
+          imagePullPolicy: IfNotPresent
+          ports: [{ name: http, containerPort: 8000 }]
+          envFrom:
+            - configMapRef: { name: aegisvolt-infra }
+            - secretRef: { name: aegisvolt-app }
+          env:
+            - { name: DEPLOY_TRACK, value: stable }
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+          readinessProbe:
+            httpGet: { path: /ready, port: http }
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: station-reservation-service-canary
+  labels: { app: station-reservation-service, track: canary }
+spec:
+  replicas: 0
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels: { app: station-reservation-service, track: canary }
+  template:
+    metadata:
+      labels: { app: station-reservation-service, track: canary }
+    spec:
+      containers:
+        - name: app
+          image: aegisvolt/station-reservation:CURRENT
+          imagePullPolicy: IfNotPresent
+          ports: [{ name: http, containerPort: 8000 }]
+          envFrom:
+            - configMapRef: { name: aegisvolt-infra }
+            - secretRef: { name: aegisvolt-app }
+          env:
+            - { name: DEPLOY_TRACK, value: canary }
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+          readinessProbe:
+            httpGet: { path: /ready, port: http }
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true

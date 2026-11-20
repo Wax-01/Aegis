@@ -1,0 +1,17 @@
+# Clúster Kubernetes local (equivalente al EKS de infra/modules/eks). Un namespace por ambiente.
+#   kind create cluster --config deploy/kind/cluster.yaml
+# NodePorts publicados en localhost:
+#   graphql-gateway  dev 30080 | test 30081 | prod 30082
+#   frontend         dev 30090 | test 30091 | prod 30092
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: aegisvolt
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - { containerPort: 30080, hostPort: 30080, listenAddress: "127.0.0.1" }
+      - { containerPort: 30081, hostPort: 30081, listenAddress: "127.0.0.1" }
+      - { containerPort: 30082, hostPort: 30082, listenAddress: "127.0.0.1" }
+      - { containerPort: 30090, hostPort: 30090, listenAddress: "127.0.0.1" }
+      - { containerPort: 30091, hostPort: 30091, listenAddress: "127.0.0.1" }
+      - { containerPort: 30092, hostPort: 30092, listenAddress: "127.0.0.1" }
