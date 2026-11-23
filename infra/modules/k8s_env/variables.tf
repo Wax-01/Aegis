@@ -34,6 +34,11 @@ variable "rest_api_id" {
   type = string
 }
 
+variable "cors_origins" {
+  description = "Orígenes del frontend autorizados para HTTP (CORS) y WebSocket en el gateway"
+  type        = list(string)
+}
+
 variable "saga_step_delay_ms" {
   type    = number
   default = 0

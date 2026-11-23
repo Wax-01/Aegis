@@ -37,3 +37,6 @@ platform/floci/data/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Material personal de la sustentación (solo local)
+docs/SUSTENTACION.md

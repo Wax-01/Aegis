@@ -27,6 +27,7 @@ Proyecto final — Patrones Arquitectónicos Avanzados.
 | `services/billing-wallet` | Paso 2 SAGA (cobro, surge pricing) + compensación `refund` |
 | `services/energy-dispatch` | Paso 3 SAGA (activación física, inyección de fallos) + telemetría |
 | `services/graphql-gateway` | Esquema GraphQL unificado (`schema.graphql`), orquestador SAGA, subscriptions |
+| `frontend` | Consola React + Vite: estaciones en vivo, SAGA dibujada como línea de metro (paradas + ramal de retorno de compensaciones), comparador de flags por ambiente, historial con pasos y movimientos de billetera |
 | `infra/bootstrap` | Bucket S3 del tfstate **con versioning** + tabla de locks |
 | `infra/live` | Stack por **workspace** (`dev`/`test`/`prod`): VPC, subredes, VPCE, NLB, API Gateway, DynamoDB, flags, CloudWatch, namespace K8s |
 | `infra/modules/*` | `network`, `dynamodb`, `feature_flags`, `observability`, `edge`, `eks`, `k8s_env` |
@@ -36,14 +37,14 @@ Proyecto final — Patrones Arquitectónicos Avanzados.
 | `.github/workflows` | `pr-checks.yml` (pre-merge) y `deploy.yml` (post-merge por rama destino) |
 | `.github/rulesets` | Protección de `dev`/`test`/`prod` (sin force push, sin push directo, checks obligatorios) |
 | `observability/prefect` | Flujos de salud, auditoría de consistencia SAGA y traza de `correlation_id` |
-| `docs/SUSTENTACION.md` | Guía de la defensa: pregunta → respuesta → archivo → comando de demo |
 
 ## Requisitos
 
 Docker Desktop, Python 3.12+, Node 22, kubectl, y además:
 
 ```powershell
-winget install Kubernetes.kind Hashicorp.Terraform GitHub.cli
+# Terraform, kind y gh: si no tienes winget, descarga el binario oficial y agrégalo al PATH de usuario
+# (Terraform se instaló así en %LOCALAPPDATA%\Programs\terraform, verificando el SHA256 publicado).
 python -m venv .venv; .\.venv\Scripts\pip install -r requirements-dev.txt
 ```
 
@@ -53,7 +54,13 @@ python -m venv .venv; .\.venv\Scripts\pip install -r requirements-dev.txt
 docker compose up -d --build                       # Floci + bootstrap + 4 servicios
 .\.venv\Scripts\python -m pytest tests             # integración + e2e (12 pruebas)
 # GraphiQL: http://localhost:8080/graphql
+
+cd frontend; npm install; npm run dev               # consola en http://localhost:5173 (usa public/config.js)
 ```
+
+El frontend lee `/config.js` en runtime (`environment`, `graphqlHttpUrl`, `graphqlWsUrl`, `peers`): la misma
+imagen se promueve dev → test → prod y cada overlay de Kustomize monta su propio `config.js`. El gateway
+acepta WebSocket solo desde los orígenes de `CORS_ORIGINS` (Terraform los fija a los 3 frontends).
 
 ## Modo plataforma (3 ambientes, la demo de la sustentación)
 
@@ -83,6 +90,7 @@ python scripts\deploy\canary.py status --env dev
 | Unitarias (41) | `services/*/tests` | `cd services/<svc>; python -m pytest tests` (moto + dobles del orquestador) |
 | Integración (8) | `tests/integration` | contra Floci + GraphQL reales |
 | E2E (4) | `tests/e2e` | SAGA feliz, fondos insuficientes, falla física + rollback, idempotencia |
+| E2E frontend (5) | `frontend/e2e` | Playwright contra el mismo stack: estaciones en vivo, SAGA feliz, falla física con ramal de retorno, historial, flags (`npm run test:e2e`) |
 
 ## CI/CD
 
@@ -92,7 +100,7 @@ python scripts\deploy\canary.py status --env dev
    viven aquí. Los jobs self-hosted solo corren para PRs del mismo repo (nunca forks).
 3. `bash scripts/github/setup_repo.sh` → crea `dev`/`test`/`prod`, el ruleset y los GitHub Environments.
 
-Flujo: `feature/*` → PR → `dev` → PR → `test` → PR → `prod`. Ver `docs/SUSTENTACION.md`.
+Flujo: `feature/*` → PR → `dev` → PR → `test` → PR → `prod`.
 
 ## Emulador vs AWS real
 

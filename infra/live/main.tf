@@ -86,4 +86,11 @@ module "k8s_env" {
   log_group_prefix            = module.observability.log_group_prefix
   rest_api_id                 = module.edge.rest_api_id
   saga_step_delay_ms          = local.cfg.saga_step_delay_ms
+  # Los 3 frontends: la consola de un ambiente LEE las flags de los otros (comparador). Escribir exige token.
+  cors_origins = concat(
+    flatten([for c in values(local.env_config) : [
+      "http://localhost:${c.frontend_node_port}", "http://127.0.0.1:${c.frontend_node_port}",
+    ]]),
+    var.extra_cors_origins,
+  )
 }
