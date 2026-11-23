@@ -376,7 +376,9 @@ def canary_release(args, kube: Kube, component: Component, new_image: str, logs,
 
         start_ms = int(time.time() * 1000)
         counters = {"ok": 0, "error": 0}
-        url = args.graphql_url or f"http://localhost:{GATEWAY_NODE_PORT[args.env]}/graphql"
+        # 127.0.0.1 y no `localhost`: en Windows `localhost` prueba primero ::1 y tarda ~2 s en caer a IPv4.
+        # Sin keep-alive ese costo se paga en CADA petición (20 peticiones en 45 s en vez de ~350).
+        url = args.graphql_url or f"http://127.0.0.1:{GATEWAY_NODE_PORT[args.env]}/graphql"
         log(f"análisis: {args.analysis_seconds}s de tráfico sintético contra {url}")
         stop = threading.Event()
         generate_traffic(url, args.analysis_seconds, stop, counters)
@@ -452,7 +454,7 @@ def cmd_deploy(args) -> int:
     first_deploy = {c.key: kube.image(c.deployment) is None for c in selected}
     render_and_apply(kube, args.env, images)
 
-    endpoint = os.getenv("AWS_ENDPOINT_URL", "http://localhost:4566")
+    endpoint = os.getenv("AWS_ENDPOINT_URL", "http://127.0.0.1:4566")
     os.environ.setdefault("AWS_ACCESS_KEY_ID", "test")
     os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "test")
     logs = boto3.client("logs", endpoint_url=endpoint, region_name="us-east-1")
