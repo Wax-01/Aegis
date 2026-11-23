@@ -40,7 +40,14 @@ class ServiceClient:
         self.name = name
         self.retries = retries
         self.backoff = backoff
-        self._http = httpx.AsyncClient(base_url=base_url.rstrip("/"), timeout=timeout)
+        # Sin keep-alive: kube-proxy balancea por CONEXIÓN TCP, no por petición. Con conexiones persistentes el
+        # gateway queda pegado a los pods que existían al abrirlas y un canary nuevo nunca recibe tráfico.
+        # Una conexión por petición deja que el Service reparta según el número de endpoints (canary ~20 %).
+        self._http = httpx.AsyncClient(
+            base_url=base_url.rstrip("/"),
+            timeout=timeout,
+            limits=httpx.Limits(max_keepalive_connections=0),
+        )
 
     async def request(
         self,

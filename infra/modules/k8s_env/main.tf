@@ -36,6 +36,7 @@ resource "kubernetes_config_map_v1" "infra" {
       API_GATEWAY_ID          = var.rest_api_id
       CLOUDWATCH_LOGS_ENABLED = "true"
       SAGA_STEP_DELAY_MS      = tostring(var.saga_step_delay_ms)
+      CORS_ORIGINS            = join(",", var.cors_origins)
     },
     var.aws_endpoint_url_in_cluster != null ? { AWS_ENDPOINT_URL = var.aws_endpoint_url_in_cluster } : {},
     { for k, v in var.table_names : "TABLE_${upper(replace(k, "-", "_"))}" => v }

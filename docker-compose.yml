@@ -87,7 +87,7 @@ services:
     environment:
       <<: *aws-env
       ADMIN_TOKEN: ${ADMIN_TOKEN:-local-admin-token}
-      SAGA_STEP_DELAY_MS: ${SAGA_STEP_DELAY_MS:-0}
+      SAGA_STEP_DELAY_MS: ${SAGA_STEP_DELAY_MS:-900}
     ports: ["127.0.0.1:8080:8000"]
     depends_on:
       bootstrap:
