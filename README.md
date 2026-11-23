@@ -37,7 +37,6 @@ Proyecto final — Patrones Arquitectónicos Avanzados.
 | `.github/workflows` | `pr-checks.yml` (pre-merge) y `deploy.yml` (post-merge por rama destino) |
 | `.github/rulesets` | Protección de `dev`/`test`/`prod` (sin force push, sin push directo, checks obligatorios) |
 | `observability/prefect` | Flujos de salud, auditoría de consistencia SAGA y traza de `correlation_id` |
-| `docs/SUSTENTACION.md` | Guía de la defensa: pregunta → respuesta → archivo → comando de demo |
 
 ## Requisitos
 
@@ -101,7 +100,7 @@ python scripts\deploy\canary.py status --env dev
    viven aquí. Los jobs self-hosted solo corren para PRs del mismo repo (nunca forks).
 3. `bash scripts/github/setup_repo.sh` → crea `dev`/`test`/`prod`, el ruleset y los GitHub Environments.
 
-Flujo: `feature/*` → PR → `dev` → PR → `test` → PR → `prod`. Ver `docs/SUSTENTACION.md`.
+Flujo: `feature/*` → PR → `dev` → PR → `test` → PR → `prod`.
 
 ## Emulador vs AWS real
 
