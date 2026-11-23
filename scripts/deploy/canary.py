@@ -56,7 +56,17 @@ class Component:
     canary: bool = True
 
 
+# El gateway va PRIMERO: es quien llama a los microservicios, así que debe estar en su versión actual (sin
+# keep-alive) antes de evaluar el canary de un servicio interno; si no, el tráfico no llega al canary.
 COMPONENTS = [
+    Component(
+        "graphql-gateway",
+        "graphql-gateway",
+        "aegisvolt/graphql-gateway",
+        "services/graphql-gateway/Dockerfile",
+        "services",
+        ("services/common", "services/graphql-gateway"),
+    ),
     Component(
         "station-reservation",
         "station-reservation-service",
@@ -80,14 +90,6 @@ COMPONENTS = [
         "services/energy-dispatch/Dockerfile",
         "services",
         ("services/common", "services/energy-dispatch"),
-    ),
-    Component(
-        "graphql-gateway",
-        "graphql-gateway",
-        "aegisvolt/graphql-gateway",
-        "services/graphql-gateway/Dockerfile",
-        "services",
-        ("services/common", "services/graphql-gateway"),
     ),
     Component(
         "frontend",
@@ -119,14 +121,19 @@ def run(cmd: list[str], *, capture: bool = False, check: bool = True, input_text
 
 
 def content_tag(component: Component) -> str:
+    """Hash de los archivos VERSIONADOS en git (no del árbol de trabajo): artefactos locales ignorados como
+    `*.egg-info` o `tsconfig.tsbuildinfo` no deben cambiar el tag, o el mismo commit produce imágenes
+    "distintas" en la PC del desarrollador y en el checkout limpio del runner."""
+    tracked = run(["git", "-C", str(ROOT), "ls-files", "-z", "--", *component.sources], capture=True)
     digest = hashlib.sha256()
-    for source in component.sources:
-        base = ROOT / source
-        for path in sorted(base.rglob("*")):
-            if path.is_dir() or any(part in SKIP_DIRS for part in path.relative_to(ROOT).parts):
-                continue
-            digest.update(str(path.relative_to(ROOT)).replace("\\", "/").encode())
-            digest.update(path.read_bytes())
+    for rel in sorted(p for p in tracked.split("\0") if p):
+        if any(part in SKIP_DIRS for part in Path(rel).parts):
+            continue
+        path = ROOT / rel
+        if not path.is_file():  # borrado en el árbol de trabajo pero aún en el índice
+            continue
+        digest.update(rel.encode())
+        digest.update(path.read_bytes().replace(b"\r\n", b"\n"))
     return digest.hexdigest()[:12]
 
 
@@ -238,7 +245,9 @@ QUERIES = [
 
 def generate_traffic(url: str, seconds: int, stop: threading.Event, counters: dict) -> None:
     deadline = time.time() + seconds
-    with httpx.Client(timeout=10) as client:
+    # Sin keep-alive: cada petición es una conexión nueva hacia el NodePort, así kube-proxy la reparte entre
+    # todos los pods del gateway (incluido su canary) en lugar de fijarse a uno.
+    with httpx.Client(timeout=10, limits=httpx.Limits(max_keepalive_connections=0)) as client:
         i = 0
         while time.time() < deadline and not stop.is_set():
             try:
