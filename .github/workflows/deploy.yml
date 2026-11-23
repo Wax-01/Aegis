@@ -79,7 +79,7 @@ jobs:
         shell: bash
     env:
       TARGET_ENV: ${{ needs.resolve-environment.outputs.env }}
-      AWS_ENDPOINT_URL: http://localhost:4566
+      AWS_ENDPOINT_URL: http://127.0.0.1:4566
     steps:
       - uses: actions/checkout@v4
 
@@ -112,5 +112,5 @@ jobs:
       - name: Pruebas de humo (solo lectura) contra el ambiente desplegado
         run: |
           case "$TARGET_ENV" in dev) PORT=30080;; test) PORT=30081;; prod) PORT=30082;; esac
-          GRAPHQL_URL="http://localhost:$PORT/graphql" AEGIS_ENV="$TARGET_ENV" \
+          GRAPHQL_URL="http://127.0.0.1:$PORT/graphql" AEGIS_ENV="$TARGET_ENV" \
             python -m pytest tests/integration -q -p no:cacheprovider
