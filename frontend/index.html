@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#1B1F3B" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>AegisVolt · Consola de carga</title>
+    <!-- Configuración de runtime por ambiente (ConfigMap en Kubernetes). Debe cargar antes del bundle. -->
+    <script src="/config.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

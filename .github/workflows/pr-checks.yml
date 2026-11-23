@@ -81,6 +81,10 @@ jobs:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
 
       - name: Terraform fmt + validate
+        # infra/live rechaza el workspace `default` (guarda en locals.tf); validate corre sin backend, así que se
+        # fija el workspace por variable de entorno para evaluar la configuración de un ambiente real.
+        env:
+          TF_WORKSPACE: dev
         run: |
           terraform fmt -check -recursive infra
           for dir in infra/bootstrap infra/live; do
