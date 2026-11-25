@@ -198,6 +198,7 @@ def audit_environment(env: str, orphan_minutes: int) -> dict[str, Any]:
     now = datetime.now(UTC)
     by_status: dict[str, int] = {}
     anomalies: list[dict[str, Any]] = []
+    compensations: list[dict[str, Any]] = []
 
     for saga in sagas:
         status = saga.get("status", "?")
@@ -238,6 +239,32 @@ def audit_environment(env: str, orphan_minutes: int) -> dict[str, Any]:
                 anomaly("MISSING_REFUND", "saga compensada con cobro pero sin reembolso")
             if reservation and reservation.get("status") not in ("RELEASED",):
                 anomaly("RESERVATION_NOT_RELEASED", f"reserva en {reservation.get('status')}")
+
+        if status in ("COMPENSATED", "COMPENSATION_FAILED"):
+            # Una fila por reserva fallida: qué falló, qué compensaciones corrieron y si DynamoDB lo confirma.
+            done = [
+                f"{s.get('name')} {'✓' if s.get('status') == 'COMPENSATED' else '✗ ' + str(s.get('status'))}"
+                for s in saga.get("steps", [])
+                if s.get("type") == "COMPENSATION"
+            ]
+            refund_ok = (refund is not None) if charge else True
+            released = reservation is None or reservation.get("status") == "RELEASED"
+            compensations.append(
+                {
+                    "ambiente": env,
+                    "fecha": (saga.get("created_at") or "")[:19].replace("T", " "),
+                    "saga_id": saga_id,
+                    "flota": fleet,
+                    "conector": saga.get("connector_id"),
+                    "falla": f"{saga.get('failure_step')}: {saga.get('failure_code')}",
+                    "compensaciones": ", ".join(done) or "—",
+                    "reembolso": f"{refund.get('amount')}"
+                    if refund
+                    else ("sin cobro" if not charge else "FALTA"),
+                    "reserva": reservation.get("status") if reservation else "—",
+                    "verificado": "OK" if (status == "COMPENSATED" and refund_ok and released) else "REVISAR",
+                }
+            )
         if status == "COMPLETED" and not charge:
             anomaly("MISSING_CHARGE", "saga completada sin cobro registrado")
 
@@ -272,7 +299,14 @@ def audit_environment(env: str, orphan_minutes: int) -> dict[str, Any]:
     _put_metric(env, "SagaOrphans", sum(a["tipo"] == "ORPHAN" for a in anomalies))
     _put_metric(env, "SagaInconsistencies", len(anomalies))
     _put_metric(env, "SagaCompensatedTotal", compensated)
-    return {"env": env, "total": len(sagas), "by_status": by_status, "anomalies": anomalies}
+    compensations.sort(key=lambda c: c["fecha"], reverse=True)
+    return {
+        "env": env,
+        "total": len(sagas),
+        "by_status": by_status,
+        "anomalies": anomalies,
+        "compensations": compensations,
+    }
 
 
 @task(retries=2, retry_delay_seconds=5, task_run_name="recover-{saga_id}")
@@ -296,7 +330,7 @@ def saga_consistency_audit(
 ) -> dict[str, Any]:
     logger = get_run_logger()
     environments = environments or ENVIRONMENTS
-    results, all_anomalies = {}, []
+    results, all_anomalies, all_compensations = {}, [], []
     for env in environments:
         try:
             result = audit_environment(env, orphan_minutes)
@@ -305,6 +339,18 @@ def saga_consistency_audit(
             continue
         results[env] = result
         all_anomalies += result["anomalies"]
+        all_compensations += result["compensations"]
+        for c in result["compensations"]:
+            logger.info(
+                "compensación %s saga=%s falla=%s -> %s | reembolso=%s reserva=%s [%s]",
+                env,
+                c["saga_id"],
+                c["falla"],
+                c["compensaciones"],
+                c["reembolso"],
+                c["reserva"],
+                c["verificado"],
+            )
         logger.info(
             "ambiente=%s sagas=%s por_estado=%s anomalías=%s",
             env,
@@ -334,6 +380,11 @@ def saga_consistency_audit(
         key="aegisvolt-saga-anomalies",
         table=all_anomalies or [{"resultado": "sin anomalías"}],
         description="Sagas huérfanas / inconsistencias detectadas",
+    )
+    create_table_artifact(
+        key="aegisvolt-saga-compensations",
+        table=all_compensations or [{"resultado": "sin compensaciones"}],
+        description="Reservas fallidas y su rollback distribuido (REFUND_WALLET / RELEASE_CONNECTOR)",
     )
     return {
         env: {"by_status": r["by_status"], "anomalies": len(r["anomalies"])} for env, r in results.items()
