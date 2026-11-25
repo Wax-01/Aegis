@@ -7,7 +7,8 @@ name: aegisvolt-platform
 
 services:
   floci:
-    image: floci/floci:latest
+    # Versión fijada (tag + digest): `latest` podía cambiar el emulador entre una corrida de CI y otra.
+    image: floci/floci:2.4.0@sha256:5ee85db604c4aa74ac76e07ea5cc83086f37bb472bf3dbb97e34019e48efae9c
     container_name: floci
     restart: unless-stopped
     ports:
