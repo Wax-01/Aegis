@@ -2,6 +2,8 @@
 # PRE-MERGE: se ejecuta en cada Pull Request hacia dev | test | prod.
 # Los 6 jobs son "required status checks" en el ruleset de las ramas (.github/rulesets): si alguno no está
 # en verde, GitHub deshabilita el botón Merge.
+# Todos dependen de promotion-guard: un PR que rompe la cadena (p. ej. test -> dev, el botón "Compare & pull
+# request" que GitHub ofrece tras un merge) falla en segundos sin gastar el runner self-hosted.
 # -----------------------------------------------------------------------------
 name: pr-checks
 
@@ -51,6 +53,7 @@ jobs:
   # ---------------------------------------------------------------------------
   lint-build:
     name: lint-build
+    needs: promotion-guard
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -117,6 +120,7 @@ jobs:
   # ---------------------------------------------------------------------------
   unit-tests:
     name: unit-tests
+    needs: promotion-guard
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -137,6 +141,7 @@ jobs:
   # ---------------------------------------------------------------------------
   integration-tests:
     name: integration-tests
+    needs: promotion-guard
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -157,6 +162,7 @@ jobs:
   # ---------------------------------------------------------------------------
   e2e-tests:
     name: e2e-tests
+    needs: promotion-guard
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -192,6 +198,7 @@ jobs:
   # estado remoto (bucket S3 versionado en Floci). Solo PRs del mismo repositorio (nunca forks).
   terraform-plan:
     name: terraform-plan
+    needs: promotion-guard
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, aegisvolt]
     defaults:
