@@ -263,6 +263,13 @@ def audit_environment(env: str, orphan_minutes: int) -> dict[str, Any]:
                     else ("sin cobro" if not charge else "FALTA"),
                     "reserva": reservation.get("status") if reservation else "—",
                     "verificado": "OK" if (status == "COMPENSATED" and refund_ok and released) else "REVISAR",
+                    # Campos internos (no van a la tabla): un task run por compensación en el flujo.
+                    "_pasos": [
+                        {"step": s.get("name"), "status": s.get("status"), "detail": s.get("detail")}
+                        for s in saga.get("steps", [])
+                        if s.get("type") == "COMPENSATION"
+                    ],
+                    "_updated": saga.get("updated_at") or saga.get("created_at"),
                 }
             )
         if status == "COMPLETED" and not charge:
@@ -309,6 +316,18 @@ def audit_environment(env: str, orphan_minutes: int) -> dict[str, Any]:
     }
 
 
+@task(task_run_name="{step}-{env}-{short_id}")
+def compensation_step(
+    env: str, saga_id: str, short_id: str, step: str, status: str, detail: str, falla: str
+) -> str:
+    """Un task run por compensación ejecutada: verde si quedó COMPENSATED, rojo si no."""
+    logger = get_run_logger()
+    logger.info("ambiente=%s saga=%s falla=%s | %s -> %s | %s", env, saga_id, falla, step, status, detail)
+    if status != "COMPENSATED":
+        raise RuntimeError(f"{step} de {saga_id} quedó en {status}: {detail}")
+    return f"{step} ✓ ({detail})"
+
+
 @task(retries=2, retry_delay_seconds=5, task_run_name="recover-{saga_id}")
 def recover_saga(env: str, saga_id: str) -> str:
     token = os.getenv(f"AEGIS_ADMIN_TOKEN_{env.upper()}", "")
@@ -326,11 +345,15 @@ def recover_saga(env: str, saga_id: str) -> str:
 
 @flow(name="aegisvolt-saga-consistency-audit", log_prints=True)
 def saga_consistency_audit(
-    environments: list[str] | None = None, orphan_minutes: int = 5, auto_recover: bool = False
+    environments: list[str] | None = None,
+    orphan_minutes: int = 5,
+    auto_recover: bool = False,
+    compensation_window_minutes: int = 180,
 ) -> dict[str, Any]:
     logger = get_run_logger()
     environments = environments or ENVIRONMENTS
     results, all_anomalies, all_compensations = {}, [], []
+    since = datetime.now(UTC) - timedelta(minutes=compensation_window_minutes)
     for env in environments:
         try:
             result = audit_environment(env, orphan_minutes)
@@ -351,6 +374,19 @@ def saga_consistency_audit(
                 c["reserva"],
                 c["verificado"],
             )
+            updated = _parse_ts(c["_updated"])
+            if updated and updated >= since:
+                for paso in c["_pasos"]:
+                    compensation_step(
+                        env,
+                        c["saga_id"],
+                        c["saga_id"].removeprefix("saga-")[:8],
+                        paso["step"] or "?",
+                        paso["status"] or "?",
+                        paso["detail"] or "",
+                        c["falla"],
+                        return_state=True,  # una compensación fallida queda en rojo sin tumbar la auditoría
+                    )
         logger.info(
             "ambiente=%s sagas=%s por_estado=%s anomalías=%s",
             env,
@@ -383,7 +419,8 @@ def saga_consistency_audit(
     )
     create_table_artifact(
         key="aegisvolt-saga-compensations",
-        table=all_compensations or [{"resultado": "sin compensaciones"}],
+        table=[{k: v for k, v in c.items() if not k.startswith("_")} for c in all_compensations]
+        or [{"resultado": "sin compensaciones"}],
         description="Reservas fallidas y su rollback distribuido (REFUND_WALLET / RELEASE_CONNECTOR)",
     )
     return {
