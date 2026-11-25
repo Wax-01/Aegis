@@ -159,12 +159,30 @@ class Kube:
         self("scale", "deployment", deployment, f"--replicas={replicas}")
 
     def rollout(self, deployment: str, timeout: int = 180) -> bool:
-        result = subprocess.run(
-            [*self.base, "rollout", "status", "deployment", deployment, f"--timeout={timeout}s"],
-            text=True,
-            capture_output=True,
-        )
-        return result.returncode == 0
+        """Espera a que el Deployment quede listo. Distingue un fallo REAL del rollout (timeout o progress
+        deadline) de un error momentáneo de kubectl/API server (p. ej. bajo carga), que se reintenta hasta el
+        timeout. Antes cualquier código de salida != 0 contaba como "no alcanzó Ready" y forzaba rollback."""
+        deadline = time.monotonic() + timeout
+        while True:
+            remaining = int(deadline - time.monotonic())
+            if remaining <= 0:
+                log(f"rollout {deployment}: no quedó listo en {timeout}s")
+                return False
+            result = subprocess.run(
+                [*self.base, "rollout", "status", "deployment", deployment, f"--timeout={remaining}s"],
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                capture_output=True,
+            )
+            if result.returncode == 0:
+                return True
+            detail = (result.stderr or result.stdout or "").strip()
+            if any(m in detail for m in ("progress deadline", "timed out waiting", "not found")):
+                log(f"rollout {deployment}: {detail}")
+                return False
+            log(f"rollout {deployment}: error transitorio de kubectl, reintento en 3 s ({detail[:200]})")
+            time.sleep(3)
 
     def restarts(self, selector: str) -> int:
         out = self(
